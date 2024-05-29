@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+
+// Define the IP address and port to capture from
+#define SERVER_IP "192.168.1.2"
+#define SERVER_PORT 80
+
+// Packet handler function
+void process_packet(const unsigned char *buffer, int size) {
+    struct iphdr *ip_header = (struct iphdr *)(buffer);
+    struct tcphdr *tcp_header = (struct tcphdr *)(buffer + ip_header->ihl * 4);
+
+    // Print the packet details
+    printf("Captured TCP packet from %s:%d to %s:%d\n",
+           inet_ntoa(*(struct in_addr *)&ip_header->saddr), ntohs(tcp_header->source),
+           inet_ntoa(*(struct in_addr *)&ip_header->daddr), ntohs(tcp_header->dest));
+}
+
+int main() {
+    int sockfd;
+    struct sockaddr_in source;
+    unsigned char *buffer = (unsigned char *)malloc(65536); // Buffer to hold the packet data
+    ssize_t data_size;
+
+    // Create a raw socket
+    sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (sockfd < 0) {
+        perror("Socket creation error");
+        return 1;
+    }
+
+    // Bind the socket to the specified IP and port (optional, to filter at socket level)
+    memset(&source, 0, sizeof(source));
+    source.sin_family = AF_INET;
+    source.sin_addr.s_addr = inet_addr(SERVER_IP);
+    source.sin_port = htons(SERVER_PORT);
+
+    if (bind(sockfd, (struct sockaddr *)&source, sizeof(source)) < 0) {
+        perror("Bind failed");
+        return 1;
+    }
+
+    // Capture packets in an infinite loop
+    while (1) {
+        data_size = recvfrom(sockfd, buffer, 65536, 0, NULL, NULL);
+        if (data_size < 0) {
+            perror("Recvfrom error");
+            return 1;
+        }
+        process_packet(buffer, data_size);
+
+        // Delay of 1 second
+        sleep(1);
+    }
+
+    close(sockfd);
+    free(buffer);
+    return 0;
+}
